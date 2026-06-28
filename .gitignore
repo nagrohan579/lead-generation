@@ -1,0 +1,22 @@
+# Output data — don't commit actual lead data or local state
+leads_output.csv
+progress.json
+_run_queue.json
+
+# Logs
+scraper.log
+scraper_stdout.log
+*.log
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# macOS
+.DS_Store
+
+# Temp files
+*.tmp
