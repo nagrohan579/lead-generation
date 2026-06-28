@@ -529,24 +529,41 @@ def scrape_maps(page, business_type: str, city: str, state: str, country: str, t
             log("    No results feed found — skipping")
             return leads
 
-        # Scroll feed to load more listings
-        for _ in range(4):
-            page.evaluate('() => { const feed = document.querySelector(\'[role="feed"]\'); if(feed) feed.scrollTop += 600; }')
-            time.sleep(random.uniform(1, 2))
-
-        # Collect listing links from the results panel
-        anchors = page.query_selector_all('[role="feed"] a[href*="/maps/place/"]')
+        # Scroll the feed until Maps stops loading new results.
+        # Stop when two consecutive scrolls produce no new listings.
         seen_hrefs = []
-        for a in anchors:
-            href = a.get_attribute("href")
-            if href and href not in seen_hrefs:
-                seen_hrefs.append(href)
-            if len(seen_hrefs) >= MAX_RESULTS_PER_COMBO:
+        stale_scrolls = 0
+        MAX_STALE = 3      # stop after this many scrolls with no new links
+        MAX_SAFETY = 200   # hard ceiling to avoid infinite loops
+
+        while stale_scrolls < MAX_STALE and len(seen_hrefs) < MAX_SAFETY:
+            page.evaluate('() => { const f = document.querySelector(\'[role="feed"]\'); if(f) f.scrollTop += 800; }')
+            time.sleep(random.uniform(1.5, 2.5))
+
+            # Check if Maps signalled "end of results"
+            end_marker = page.query_selector('span.HlvSq, [class*="end-of-list"], [jslog*="end_of_list"]')
+            if end_marker and end_marker.is_visible():
+                # Grab whatever is in the feed now, then stop
+                pass  # fall through to collect, then break below
+
+            anchors = page.query_selector_all('[role="feed"] a[href*="/maps/place/"]')
+            before = len(seen_hrefs)
+            for a in anchors:
+                href = a.get_attribute("href")
+                if href and href not in seen_hrefs:
+                    seen_hrefs.append(href)
+
+            if len(seen_hrefs) == before:
+                stale_scrolls += 1
+            else:
+                stale_scrolls = 0  # reset on progress
+
+            if end_marker and end_marker.is_visible():
                 break
 
         log(f"    Found {len(seen_hrefs)} listing links")
 
-        for i, listing_url in enumerate(seen_hrefs):
+        for i, listing_url in enumerate(seen_hrefs):  # no cap — process everything found
             try:
                 time.sleep(random.uniform(*DELAY_BETWEEN_CLICKS))
                 page.goto(listing_url, wait_until="domcontentloaded", timeout=20_000)
