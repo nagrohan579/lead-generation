@@ -504,16 +504,23 @@ def scrape_maps(page, business_type: str, city: str, state: str, country: str, t
         page.goto(url, wait_until="domcontentloaded", timeout=30_000)
         time.sleep(random.uniform(2, 3))
 
-        # Dismiss cookie consent if present
-        for btn_text in ["Accept all", "Reject all", "I agree", "Accept"]:
+        # If Google redirected to consent.google.com (EU servers), handle it
+        # and navigate back. Use jsname attribute — stable across all languages.
+        if "consent.google.com" in page.url:
             try:
-                btn = page.locator(f'button:has-text("{btn_text}")').first
-                if btn.is_visible(timeout=2000):
-                    btn.click()
-                    time.sleep(0.8)
-                    break
+                # jsname="b3VHJd" is the Accept-all button in every language
+                page.click('button[jsname="b3VHJd"]', timeout=5000)
+                time.sleep(1.5)
             except Exception:
-                pass
+                try:
+                    # Fallback: first submit button in the form is always Accept
+                    page.locator('form button[type="submit"]').first.click(timeout=3000)
+                    time.sleep(1.5)
+                except Exception:
+                    pass
+            # Navigate back to Maps after dismissing consent
+            page.goto(url, wait_until="domcontentloaded", timeout=30_000)
+            time.sleep(random.uniform(2, 3))
 
         # Wait for results feed
         try:
@@ -762,6 +769,15 @@ def main():
             Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
             window.chrome = { runtime: {} };
         """)
+        # Pre-set Google consent cookie so EU servers never show the consent page.
+        # SOCS is the cookie Google checks; this value encodes "accept all".
+        context.add_cookies([{
+            "name": "SOCS",
+            "value": "CAESEwgDEgk0OTY4MTQ0NDAYASAB",
+            "domain": ".google.com",
+            "path": "/",
+            "sameSite": "Lax",
+        }])
         page = context.new_page()
 
         try:
